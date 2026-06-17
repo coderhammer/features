@@ -1,1 +1,0 @@
-conda_channel_creation.sh

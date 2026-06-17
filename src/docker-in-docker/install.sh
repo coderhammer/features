@@ -207,6 +207,53 @@ get_github_api_repo_url() {
     echo "${url/https:\/\/github.com/https:\/\/api.github.com\/repos}/releases"
 }
 
+# Robustly resolve the latest *stable* (non-prerelease, non-draft) release tag for a GitHub
+# repo whose download asset actually exists, verified with a HEAD request before committing
+# to it. Upstream's original git-tag-based resolution (find_version_from_git_tags) trusts
+# that the newest semver-looking git tag has a matching published release asset, which breaks
+# whenever a project pushes a tag (or a prerelease/RC snapshot build) before — or instead of —
+# publishing the asset under the expected filename. This walks the actual Releases API, skips
+# prereleases/drafts, and verifies each candidate's asset before accepting it, falling back to
+# older stable releases as needed.
+#
+# Usage: resolve_stable_release_with_asset <variable_name> <repo_url> <asset_url_template>
+#   <asset_url_template> uses "{version}" as a placeholder (without the leading "v").
+resolve_stable_release_with_asset() {
+    local variable_name=$1
+    local requested_version=${!variable_name}
+    if [ "${requested_version}" = "none" ]; then return; fi
+    local repo_url=$2
+    local asset_url_template=$3
+    local api_url
+    api_url="$(get_github_api_repo_url "$repo_url")"
+
+    local releases_json
+    releases_json="$(curl -fsSL "$api_url")"
+
+    local candidates
+    if [ "${requested_version}" = "latest" ] || [ "${requested_version}" = "current" ] || [ "${requested_version}" = "lts" ]; then
+        candidates="$(echo "${releases_json}" | jq -r '.[] | select(.prerelease == false and .draft == false) | .tag_name')"
+    else
+        candidates="$(echo "${releases_json}" | jq -r --arg v "${requested_version#v}" '.[] | select(.tag_name == ("v" + $v) or .tag_name == $v) | .tag_name')"
+    fi
+
+    local tag version asset_url
+    for tag in ${candidates}; do
+        version="${tag#v}"
+        asset_url="${asset_url_template/\{version\}/${version}}"
+        if curl -fsSL -o /dev/null --head "${asset_url}"; then
+            declare -g "${variable_name}=${version}"
+            echo "${variable_name}=${version} (verified asset at ${asset_url})"
+            return 0
+        else
+            echo "(!) Release ${tag} has no matching asset at ${asset_url}, trying an older release..." >&2
+        fi
+    done
+
+    err "Could not resolve a working ${variable_name} for requested version \"${requested_version}\" from ${repo_url} (checked: ${candidates})"
+    exit 1
+}
+
 ###########################################
 # Start docker-in-docker installation
 ###########################################
@@ -706,16 +753,6 @@ echo "Finished installing docker / moby!"
 docker_home="/usr/libexec/docker"
 cli_plugins_dir="${docker_home}/cli-plugins"
 
-# fallback for docker-compose
-fallback_compose(){
-    local url=$1
-    local repo_url=$(get_github_api_repo_url "$url")
-    echo -e "\n(!) Failed to fetch the latest artifacts for docker-compose v${compose_version}..."
-    get_previous_version "${url}" "${repo_url}" compose_version
-    echo -e "\nAttempting to install v${compose_version}"
-    curl -fsSL "https://github.com/docker/compose/releases/download/v${compose_version}/docker-compose-linux-${target_compose_arch}" -o ${docker_compose_path}
-}
-
 # If 'docker-compose' command is to be included
 if [ "${DOCKER_DASH_COMPOSE_VERSION}" != "none" ]; then
     case "${architecture}" in
@@ -763,12 +800,9 @@ if [ "${DOCKER_DASH_COMPOSE_VERSION}" != "none" ]; then
     else
         compose_version=${DOCKER_DASH_COMPOSE_VERSION#v}
         docker_compose_url="https://github.com/docker/compose"
-        find_version_from_git_tags compose_version "$docker_compose_url" "tags/v"
+        resolve_stable_release_with_asset compose_version "$docker_compose_url" "https://github.com/docker/compose/releases/download/v{version}/docker-compose-linux-${target_compose_arch}"
         echo "(*) Installing docker-compose ${compose_version}..."
-        curl -fsSL "https://github.com/docker/compose/releases/download/v${compose_version}/docker-compose-linux-${target_compose_arch}" -o ${docker_compose_path} || {
-                 echo -e "\n(!) Failed to fetch the latest artifacts for docker-compose v${compose_version}..." 
-                 fallback_compose "$docker_compose_url"
-        }
+        curl -fsSL "https://github.com/docker/compose/releases/download/v${compose_version}/docker-compose-linux-${target_compose_arch}" -o ${docker_compose_path}
 
         chmod +x ${docker_compose_path}
 
@@ -782,15 +816,6 @@ if [ "${DOCKER_DASH_COMPOSE_VERSION}" != "none" ]; then
     fi
 fi
 
-# fallback method for compose-switch
-fallback_compose-switch() {
-    local url=$1
-    local repo_url=$(get_github_api_repo_url "$url")
-    echo -e "\n(!) Failed to fetch the latest artifacts for compose-switch v${compose_switch_version}..."
-    get_previous_version "$url" "$repo_url" compose_switch_version
-    echo -e "\nAttempting to install v${compose_switch_version}"
-    curl -fsSL "https://github.com/docker/compose-switch/releases/download/v${compose_switch_version}/docker-compose-linux-${target_switch_arch}" -o /usr/local/bin/compose-switch
-}
 # Install docker-compose switch if not already installed - https://github.com/docker/compose-switch#manual-installation
 if [ "${INSTALL_DOCKER_COMPOSE_SWITCH}" = "true" ] && ! type compose-switch > /dev/null 2>&1; then
     if type docker-compose > /dev/null 2>&1; then
@@ -799,22 +824,16 @@ if [ "${INSTALL_DOCKER_COMPOSE_SWITCH}" = "true" ] && ! type compose-switch > /d
         target_compose_path="$(dirname "${current_compose_path}")/docker-compose-v1"
         compose_switch_version="latest"
         compose_switch_url="https://github.com/docker/compose-switch"
-        # Try to get latest version, fallback to known stable version if GitHub API fails
-        set +e
-        find_version_from_git_tags compose_switch_version "$compose_switch_url"
-        if [ $? -ne 0 ] || [ -z "${compose_switch_version}" ] || [ "${compose_switch_version}" = "latest" ]; then
-            echo "(*) GitHub API rate limited or failed, using fallback method"
-            fallback_compose-switch "$compose_switch_url"
-        fi
-        set -e
-        
+
         # Map architecture for compose-switch downloads
         case "${architecture}" in
             amd64|x86_64) target_switch_arch=amd64 ;;
             arm64|aarch64) target_switch_arch=arm64 ;;
             *) target_switch_arch=${architecture} ;;
         esac
-        curl -fsSL "https://github.com/docker/compose-switch/releases/download/v${compose_switch_version}/docker-compose-linux-${target_switch_arch}" -o /usr/local/bin/compose-switch || fallback_compose-switch "$compose_switch_url"
+
+        resolve_stable_release_with_asset compose_switch_version "$compose_switch_url" "https://github.com/docker/compose-switch/releases/download/v{version}/docker-compose-linux-${target_switch_arch}"
+        curl -fsSL "https://github.com/docker/compose-switch/releases/download/v${compose_switch_version}/docker-compose-linux-${target_switch_arch}" -o /usr/local/bin/compose-switch
         chmod +x /usr/local/bin/compose-switch
         # TODO: Verify checksum once available: https://github.com/docker/compose-switch/issues/11
         # Setup v1 CLI as alternative in addition to compose-switch (which maps to v2)
@@ -841,22 +860,9 @@ fi
 
 usermod -aG docker ${USERNAME}
 
-# fallback for docker/buildx
-fallback_buildx() {
-    local url=$1
-    local repo_url=$(get_github_api_repo_url "$url")
-    echo -e "\n(!) Failed to fetch the latest artifacts for docker buildx v${buildx_version}..."
-    get_previous_version "$url" "$repo_url" buildx_version
-    buildx_file_name="buildx-v${buildx_version}.linux-${target_buildx_arch}"
-    echo -e "\nAttempting to install v${buildx_version}"
-    wget https://github.com/docker/buildx/releases/download/v${buildx_version}/${buildx_file_name}
-}
- 
 if [ "${INSTALL_DOCKER_BUILDX}" = "true" ]; then
     buildx_version="latest"
     docker_buildx_url="https://github.com/docker/buildx"
-    find_version_from_git_tags buildx_version "$docker_buildx_url" "refs/tags/v"
-    echo "(*) Installing buildx ${buildx_version}..."
 
       # Map architecture for buildx downloads
     case "${architecture}" in
@@ -865,11 +871,14 @@ if [ "${INSTALL_DOCKER_BUILDX}" = "true" ]; then
         *) target_buildx_arch=${architecture} ;;
     esac
 
+    resolve_stable_release_with_asset buildx_version "$docker_buildx_url" "https://github.com/docker/buildx/releases/download/v{version}/buildx-v{version}.linux-${target_buildx_arch}"
+    echo "(*) Installing buildx ${buildx_version}..."
+
     buildx_file_name="buildx-v${buildx_version}.linux-${target_buildx_arch}"
 
     cd /tmp
-    wget https://github.com/docker/buildx/releases/download/v${buildx_version}/${buildx_file_name} || fallback_buildx "$docker_buildx_url"
-    
+    wget https://github.com/docker/buildx/releases/download/v${buildx_version}/${buildx_file_name}
+
     docker_home="/usr/libexec/docker"
     cli_plugins_dir="${docker_home}/cli-plugins"
 

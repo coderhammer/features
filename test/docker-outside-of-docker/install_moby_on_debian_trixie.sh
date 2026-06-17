@@ -1,1 +1,0 @@
-install_on_debian_trixie.sh

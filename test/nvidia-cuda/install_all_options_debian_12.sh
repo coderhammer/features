@@ -1,1 +1,0 @@
-install_all_options.sh
