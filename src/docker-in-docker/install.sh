@@ -240,7 +240,7 @@ resolve_stable_release_with_asset() {
     local tag version asset_url
     for tag in ${candidates}; do
         version="${tag#v}"
-        asset_url="${asset_url_template/\{version\}/${version}}"
+        asset_url="${asset_url_template//\{version\}/${version}}"
         if curl -fsSL -o /dev/null --head "${asset_url}"; then
             declare -g "${variable_name}=${version}"
             echo "${variable_name}=${version} (verified asset at ${asset_url})"

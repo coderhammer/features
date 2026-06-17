@@ -1,6 +1,6 @@
 {
   "id": "docker-in-docker",
-  "version": "3.1.1",
+  "version": "3.1.2",
   "name": "Docker (Docker-in-Docker) — spunto fork",
   "documentationURL": "https://github.com/coderhammer/features/tree/main/src/docker-in-docker",
   "description": "Fork of devcontainers/features docker-in-docker with a robust buildx/compose/compose-switch version resolver (verifies release assets exist instead of trusting git tags). Create child containers *inside* a container, independent from the host's docker instance.",
