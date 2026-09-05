@@ -1,0 +1,52 @@
+{
+    "defaults_bookworm": {
+        "image": "debian:bookworm-slim",
+        "features": {
+            "spunto-pack": {}
+        }
+    },
+    "tmux_guard_bullseye": {
+        "image": "debian:bullseye-slim",
+        "features": {
+            "spunto-pack": {
+                "installCodeServer": false,
+                "terminalBackend": "tmux"
+            }
+        }
+    },
+    "code_server_node_slim": {
+        "image": "node:24-slim",
+        "features": {
+            "spunto-pack": {
+                "terminalBackend": "none",
+                "strict": true
+            }
+        }
+    },
+    "terminal_backend_tmux_only": {
+        "image": "debian:bookworm-slim",
+        "features": {
+            "spunto-pack": {
+                "installCodeServer": false,
+                "terminalBackend": "tmux",
+                "configureTmux": false
+            }
+        }
+    },
+    "with_common_utils": {
+        "image": "debian:bookworm-slim",
+        "remoteUser": "vscode",
+        "features": {
+            "ghcr.io/devcontainers/features/common-utils:2": {
+                "username": "vscode",
+                "upgradePackages": false,
+                "installZsh": true,
+                "configureZshAsDefaultShell": true
+            },
+            "spunto-pack": {
+                "installSshd": true,
+                "strict": true
+            }
+        }
+    }
+}

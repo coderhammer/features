@@ -91,8 +91,19 @@ took()    { printf '%ss' "$(( $(now) - $1 ))"; }
 # `code-server --version` prints its semver on its own line, but the *first* run also
 # emits a "[timestamp] info Wrote default config file …" line ahead of it — so taking
 # the first line (or its first field) yields a timestamp instead of a version.
+#
+# That default config file is the reason for the CODE_SERVER_CONFIG dance: asking for a
+# version *writes* to the invoking user's home (~/.config/code-server/config.yaml, with a
+# generated password in it), and this feature installs software without touching anyone's
+# home — least of all baking a password nobody chose into every image built from it. The
+# probe is pointed at a temp file, which is then thrown away.
 code_server_version() {
-    code-server --version 2>/dev/null | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+' | head -1
+    _cs_tmp="$(mktemp -d)"
+    HOME="$_cs_tmp" XDG_CONFIG_HOME="$_cs_tmp/.config" XDG_DATA_HOME="$_cs_tmp/.local/share" \
+        CODE_SERVER_CONFIG="$_cs_tmp/config.yaml" \
+        code-server --version 2>/dev/null \
+        | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+' | head -1
+    rm -rf "$_cs_tmp"
 }
 
 # dtach has neither --version nor -V ("Invalid mode"); its banner lives at the top of
@@ -104,6 +115,17 @@ dtach_version() {
 # "script from util-linux 2.38.1" → "util-linux 2.38.1"
 script_version() {
     script --version 2>/dev/null | sed -n 's/.*from \(.*\)/\1/p' | head -1
+}
+
+# tmux options come and go, and tmux fails a *whole* config file loudly rather than skipping the
+# line it does not know: one option too new for the installed version, and every client attaching
+# to that server gets an error banner to dismiss. Anything below that is not universally old is
+# therefore gated on this. `$TMUX_MAJOR`/`$TMUX_MINOR` are set once the package is installed;
+# unparsable version → false, i.e. write only what every tmux has understood for a decade.
+tmux_at_least() {
+    [ -n "$TMUX_MAJOR" ] && [ -n "$TMUX_MINOR" ] || return 1
+    [ "$TMUX_MAJOR" -gt "$1" ] && return 0
+    [ "$TMUX_MAJOR" -eq "$1" ] && [ "$TMUX_MINOR" -ge "$2" ]
 }
 
 # ─── Package manager shim ────────────────────────────────────────────────────
@@ -250,8 +272,17 @@ if [ "$INSTALL_CODE_SERVER" = "true" ]; then
                 _args="--method standalone --prefix /usr/local --version ${CODE_SERVER_VERSION}"
             fi
             set +e
+            # The upstream installer keeps the release tarball in its cache dir "so you can
+            # reinstall without re-downloading" — reasonable on a laptop, ~110 MB of dead weight
+            # in an image layer, sitting in root's home. XDG_CACHE_HOME points it at a temp dir
+            # that is deleted right after.
+            # (the variable goes on the *right* side of the pipe: that is the shell that runs
+            # the installer — the left side only downloads it.)
+            _cs_cache="$(mktemp -d)"
             # shellcheck disable=SC2086
-            curl -fsSL https://code-server.dev/install.sh | sh -s -- $_args >/dev/null 2>&1
+            curl -fsSL https://code-server.dev/install.sh \
+                | XDG_CACHE_HOME="$_cs_cache" sh -s -- $_args >/dev/null 2>&1
+            rm -rf "$_cs_cache"
             set -e
             # Presence on disk is not the same as being runnable. The standalone release
             # bundles a glibc-linked node, so on a musl system (Alpine) every file lands
@@ -286,6 +317,8 @@ if [ "$WANT_TMUX" = "true" ]; then
 
     if command -v tmux >/dev/null 2>&1; then
         _ver="$(tmux -V 2>/dev/null | cut -d' ' -f2)"
+        TMUX_MAJOR="$(printf '%s' "$_ver" | sed -n 's/^\([0-9]*\)\..*/\1/p')"
+        TMUX_MINOR="$(printf '%s' "$_ver" | sed -n 's/^[0-9]*\.\([0-9]*\).*/\1/p')"
 
         if [ "$CONFIGURE_TMUX" = "true" ]; then
             # System-wide, so it applies before (and stays overridable by) ~/.tmux.conf.
@@ -298,7 +331,6 @@ set -g history-limit 50000
 set -g base-index 1
 setw -g pane-base-index 1
 set -g renumber-windows on
-set -g window-size latest
 setw -g aggressive-resize on
 set -sg escape-time 10
 set -g default-terminal "screen-256color"
@@ -312,19 +344,34 @@ setw -g window-status-style "fg=#a1a1aa"
 set -g status-justify left
 TMUX_CONF
 
-            # `terminal-features` advertises OSC 52 support, which screen-256color's
-            # terminfo omits — without it, a program inside tmux cannot write to the
-            # client's clipboard. The option only exists from tmux 3.2 onward: appending
-            # it unconditionally makes every single terminal launch print
-            # "Invalid option: terminal-features" on e.g. Debian bullseye's 3.1c.
-            _major="$(printf '%s' "$_ver" | sed -n 's/^\([0-9]*\)\..*/\1/p')"
-            _minor="$(printf '%s' "$_ver" | sed -n 's/^[0-9]*\.\([0-9]*\).*/\1/p')"
-            if [ -n "$_major" ] && [ -n "$_minor" ] && \
-               { [ "$_major" -gt 3 ] || { [ "$_major" -eq 3 ] && [ "$_minor" -ge 2 ]; }; }; then
+            _gated=""
+
+            # Size a shared session to the *latest* client rather than the smallest one, so a
+            # second browser tab attaching does not shrink everyone's pane. tmux 3.1 and up.
+            if tmux_at_least 3 1; then
+                printf '%s\n' 'set -g window-size latest' >> /etc/tmux.conf
+                _gated="window-size"
+            fi
+
+            # `terminal-features` advertises OSC 52 support, which screen-256color's terminfo
+            # omits — without it, a program inside tmux cannot write to the client's clipboard.
+            # tmux 3.2 and up.
+            if tmux_at_least 3 2; then
                 printf '%s\n' 'set -as terminal-features ",screen-256color:clipboard"' >> /etc/tmux.conf
-                note "/etc/tmux.conf written · OSC 52 clipboard enabled (tmux ≥ 3.2)"
-            else
-                note "/etc/tmux.conf written · OSC 52 clipboard skipped (tmux ${_ver} predates terminal-features)"
+                _gated="${_gated:+$_gated · }OSC 52 clipboard"
+            fi
+
+            note "/etc/tmux.conf written${_gated:+ · $_gated}"
+
+            # tmux refuses a config file as a whole: one option it does not know and every client
+            # attaching to that server opens on an error banner. Since which options exist depends
+            # on a version we only learn at build time, the config is loaded here for real — the
+            # same "presence is not proof" rule applied to code-server above. `-f /dev/null` keeps
+            # the probe from loading the file twice, and `-L` uses a throwaway socket so this never
+            # collides with a server a base image might already be running.
+            if ! _tmux_err="$(tmux -L spunto-pack-probe -f /dev/null start-server \; \
+                    source-file /etc/tmux.conf \; kill-server 2>&1)"; then
+                warn "the tmux config just written does not load on tmux ${_ver} (${_tmux_err}) — every client attaching would see that error. Leaving it in place, but it needs a version guard."
             fi
         fi
 
