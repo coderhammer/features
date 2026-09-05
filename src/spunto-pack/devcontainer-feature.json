@@ -1,0 +1,44 @@
+{
+  "id": "spunto-pack",
+  "version": "1.0.0",
+  "name": "Spunto Pack",
+  "documentationURL": "https://github.com/coderhammer/features/tree/main/src/spunto-pack",
+  "description": "Everything a remote development environment needs on top of a base image and common-utils: an in-browser VS Code (code-server), persistent terminal backends (tmux and/or dtach), and an optional SSH server. One feature, one pass, readable build log.",
+  "options": {
+    "installCodeServer": {
+      "type": "boolean",
+      "default": true,
+      "description": "Install code-server (VS Code in the browser)."
+    },
+    "codeServerVersion": {
+      "type": "string",
+      "proposals": ["latest"],
+      "default": "latest",
+      "description": "code-server version to install, e.g. 4.101.2. 'latest' resolves at build time."
+    },
+    "terminalBackend": {
+      "type": "string",
+      "enum": ["both", "tmux", "dtach", "none"],
+      "default": "both",
+      "description": "Which persistent-terminal backend(s) to install. 'dtach' also pulls util-linux for script(1), used to replay a session's tail on attach."
+    },
+    "configureTmux": {
+      "type": "boolean",
+      "default": true,
+      "description": "Write a system-wide /etc/tmux.conf (mouse, OSC 52 clipboard, 50k scrollback, warm status bar). Read before the user's own ~/.tmux.conf, so it stays overridable."
+    },
+    "installSshd": {
+      "type": "boolean",
+      "default": false,
+      "description": "Install an OpenSSH server. Only the package: no sshd_config rewriting, no host key, no entrypoint — the surrounding platform is expected to own that policy. For a batteries-included SSH server, use ghcr.io/devcontainers/features/sshd instead."
+    },
+    "strict": {
+      "type": "boolean",
+      "default": false,
+      "description": "Fail the build when a requested component cannot be installed. Off by default: components are best-effort and the build ends with a warning summary instead."
+    }
+  },
+  "installsAfter": [
+    "ghcr.io/devcontainers/features/common-utils"
+  ]
+}
