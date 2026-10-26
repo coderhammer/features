@@ -1,0 +1,16 @@
+{
+  "name": "spunto-theme",
+  "displayName": "Spunto Theme",
+  "description": "Spunto's light and dark themes: the design system's ground, ink and green over VS Code's Modern syntax colours.",
+  "version": "1.0.0",
+  "publisher": "spunto",
+  "license": "MIT",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Themes"],
+  "contributes": {
+    "themes": [
+      { "id": "Spunto Light", "label": "Spunto Light", "uiTheme": "vs", "path": "./themes/spunto-light-color-theme.json" },
+      { "id": "Spunto Dark", "label": "Spunto Dark", "uiTheme": "vs-dark", "path": "./themes/spunto-dark-color-theme.json" }
+    ]
+  }
+}

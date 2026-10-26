@@ -1,6 +1,6 @@
 {
   "id": "spunto-pack",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "name": "Spunto Pack",
   "documentationURL": "https://github.com/coderhammer/features/tree/main/src/spunto-pack",
   "description": "Everything a remote development environment needs on top of a base image and common-utils: an in-browser VS Code (code-server), persistent terminal backends (tmux and/or dtach), and an optional SSH server. One feature, one pass, readable build log.",
@@ -15,6 +15,12 @@
       "proposals": ["latest"],
       "default": "latest",
       "description": "code-server version to install, e.g. 4.101.2. 'latest' resolves at build time."
+    },
+    "brand": {
+      "type": "string",
+      "enum": ["spunto", "none"],
+      "default": "spunto",
+      "description": "Rebrand code-server as Spunto: the name in product.json, the favicon and PWA icons, and two built-in themes (Spunto Light, Spunto Dark). Selecting a theme is left to the user's settings. 'none' keeps code-server as shipped."
     },
     "terminalBackend": {
       "type": "string",
