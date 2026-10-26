@@ -48,5 +48,14 @@
                 "strict": true
             }
         }
+    },
+    "brand_none": {
+        "image": "debian:bookworm-slim",
+        "features": {
+            "spunto-pack": {
+                "brand": "none",
+                "terminalBackend": "none"
+            }
+        }
     }
 }

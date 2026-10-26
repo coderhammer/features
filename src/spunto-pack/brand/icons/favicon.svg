@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="t">
+  <title id="t">Spunto</title>
+  <rect x="0" y="0" width="128" height="128" rx="14" fill="#bfeb56"/>
+  <path d="M18 18h72v14H32v58H18z" fill="#0a3423"/>
+  <path d="M110 110H38V96h58V38h14z" fill="#0a3423"/>
+  <circle cx="64" cy="64" r="18" fill="#0a3423"/>
+</svg>

@@ -23,6 +23,7 @@ CODE_SERVER_VERSION="${CODESERVERVERSION:-latest}"
 TERMINAL_BACKEND="${TERMINALBACKEND:-both}"
 CONFIGURE_TMUX="${CONFIGURETMUX:-true}"
 INSTALL_SSHD="${INSTALLSSHD:-false}"
+BRAND="${BRAND:-spunto}"
 STRICT="${STRICT:-false}"
 
 FEATURE_DIR="$(dirname "$0")"
@@ -224,6 +225,7 @@ esac
 PLAN=""
 add_plan() { if [ -z "$PLAN" ]; then PLAN="$1"; else PLAN="${PLAN} · $1"; fi; }
 [ "$INSTALL_CODE_SERVER" = "true" ] && add_plan "code-server"
+[ "$INSTALL_CODE_SERVER" = "true" ] && [ "$BRAND" = "spunto" ] && add_plan "Spunto brand"
 [ "$WANT_TMUX" = "true" ]           && add_plan "tmux"
 [ "$WANT_DTACH" = "true" ]          && add_plan "dtach"
 [ "$INSTALL_SSHD" = "true" ]        && add_plan "sshd"
@@ -299,6 +301,85 @@ if [ "$INSTALL_CODE_SERVER" = "true" ]; then
             else
                 warn "code-server could not be installed — the in-browser IDE and any VS Code extension installed later will be missing from this image"
             fi
+        fi
+    fi
+fi
+
+# ─── Brand ───────────────────────────────────────────────────────────────────
+#
+# code-server is MIT, and so is the Code - OSS it bundles: the files are ours to change, their
+# names and logos are not ours to wear. So the IDE stops calling itself code-server — the name
+# in product.json, the favicon and the PWA icons — and gains two built-in themes, Spunto Light
+# and Spunto Dark, dropped into the bundled extensions folder (no marketplace involved). Their
+# syntax colours are VS Code's own Modern ones; only the workbench is ours. LICENSE and
+# ThirdPartyNotices.txt stay where they are.
+#
+# Which theme is *selected* is a user setting, and this feature writes to nobody's home: the
+# platform seeds `workbench.colorTheme`. Everything here lives in code-server's install dir,
+# found from the binary on PATH, so a code-server that was already in the base image gets it too.
+
+if [ "$INSTALL_CODE_SERVER" = "true" ] && [ "$BRAND" = "spunto" ]; then
+    section "Spunto brand"
+    _bin="$(command -v code-server 2>/dev/null || true)"
+    _cs=""
+    if [ -n "$_bin" ]; then
+        # /usr/local/bin/code-server → /usr/local/lib/code-server-X/bin/code-server
+        _real="$(readlink -f "$_bin" 2>/dev/null || printf '%s' "$_bin")"
+        _cs="$(dirname "$(dirname "$_real")")"
+    fi
+    _brand="${FEATURE_DIR}/brand"
+    if [ -z "$_cs" ] || [ ! -f "$_cs/lib/vscode/product.json" ]; then
+        warn "code-server's install directory was not found — the IDE keeps code-server's name, icons and themes"
+    elif [ ! -d "$_brand" ]; then
+        warn "brand assets are missing from this feature (${_brand}) — the IDE keeps code-server's look"
+    else
+        _node="$_cs/lib/node"
+        [ -x "$_node" ] || _node="$(command -v node 2>/dev/null || true)"
+        if [ -n "$_node" ] && PRODUCT="$_cs/lib/vscode/product.json" "$_node" -e '
+            const fs = require("fs"); const f = process.env.PRODUCT
+            const p = JSON.parse(fs.readFileSync(f, "utf8"))
+            p.nameShort = "Spunto"; p.nameLong = "Spunto"
+            fs.writeFileSync(f, JSON.stringify(p, null, "\t"))' 2>/dev/null; then
+            ok "name → Spunto (product.json)"
+        else
+            warn "could not rewrite product.json — the IDE still names itself code-server"
+        fi
+
+        _media="$_cs/src/browser/media"
+        if [ -d "$_media" ]; then
+            cp "$_brand/icons/favicon.ico" "$_media/favicon.ico"
+            cp "$_brand/icons/favicon.svg" "$_media/favicon.svg"
+            cp "$_brand/icons/favicon.svg" "$_media/favicon-dark-support.svg"
+            for _i in pwa-icon-192 pwa-icon-512 pwa-icon-maskable-192 pwa-icon-maskable-512; do
+                cp "$_brand/icons/${_i}.png" "$_media/${_i}.png"
+            done
+        fi
+        _server="$_cs/lib/vscode/resources/server"
+        if [ -d "$_server" ]; then
+            cp "$_brand/icons/favicon.ico" "$_server/favicon.ico"
+            cp "$_brand/icons/pwa-icon-192.png" "$_server/code-192.png"
+            cp "$_brand/icons/pwa-icon-512.png" "$_server/code-512.png"
+        fi
+        # The workbench's own icon (title bar, about) and the watermark of an empty editor group.
+        for _d in "$_cs/lib/vscode/out/media" "$_cs/lib/vscode/out/vs/workbench/browser/media"; do
+            [ -f "$_d/code-icon.svg" ] && cp "$_brand/icons/favicon.svg" "$_d/code-icon.svg"
+        done
+        for _d in "$_cs/lib/vscode/out/media" "$_cs/lib/vscode/out/vs/workbench/browser/parts/editor/media"; do
+            for _v in light dark hcLight hcDark; do
+                [ -f "$_d/letterpress-${_v}.svg" ] && cp "$_brand/icons/letterpress-${_v}.svg" "$_d/letterpress-${_v}.svg"
+            done
+        done
+        ok "favicon, PWA icons, workbench icon and watermark → Spunto"
+
+        _ext="$_cs/lib/vscode/extensions"
+        if [ -d "$_ext" ] && [ -f "$_ext/theme-defaults/themes/light_modern.json" ]; then
+            rm -rf "$_ext/spunto-theme"
+            cp -R "$_brand/spunto-theme" "$_ext/spunto-theme"
+            rm -f "$_ext/spunto-theme/generate.py"
+            ok "themes Spunto Light · Spunto Dark (built in)"
+            add_summary "Spunto brand"
+        else
+            warn "this code-server has no Modern themes to build on — Spunto Light / Dark not installed"
         fi
     fi
 fi
