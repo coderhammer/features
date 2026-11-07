@@ -57,5 +57,13 @@
                 "terminalBackend": "none"
             }
         }
+    },
+    "no_code_server": {
+        "image": "debian:bookworm-slim",
+        "features": {
+            "spunto-pack": {
+                "installCodeServer": false
+            }
+        }
     }
 }

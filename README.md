@@ -62,6 +62,13 @@ git clone <my-project-with-devcontainer>
 devcontainer build --workspace-folder <path-to-my-project-with-devcontainer>
 ```
 
+## Spunto's features
+
+| Feature | What |
+|---|---|
+| [`spunto-pack`](src/spunto-pack) | code-server, tmux, dtach and an optional sshd — the layer between a base image and a remote development environment. |
+| [`spunto-ide`](src/spunto-ide) | code-server and its Spunto brand alone, for an image whose IDE is optional (`spunto-pack` with `installCodeServer: false`). Ships spunto-pack's `install.sh`, copied in by `scripts/sync-shared.sh` at release — run it before testing `spunto-ide`. |
+
 ## Repo Structure
 
 ```

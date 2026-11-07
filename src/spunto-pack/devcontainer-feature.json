@@ -1,6 +1,6 @@
 {
   "id": "spunto-pack",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "name": "Spunto Pack",
   "documentationURL": "https://github.com/coderhammer/features/tree/main/src/spunto-pack",
   "description": "Everything a remote development environment needs on top of a base image and common-utils: an in-browser VS Code (code-server), persistent terminal backends (tmux and/or dtach), and an optional SSH server. One feature, one pass, readable build log.",

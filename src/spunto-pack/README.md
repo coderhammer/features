@@ -25,6 +25,25 @@ Everything a remote development environment needs on top of a base image and `co
 | `installSshd` | boolean | `false` | Install an OpenSSH server (the package only — see below). |
 | `strict` | boolean | `false` | Fail the build when a requested component cannot be installed. |
 
+## The IDE apart: `spunto-ide`
+
+Since 1.2.0 the IDE can be installed on its own, by [`spunto-ide`](../spunto-ide): code-server
+and its brand, nothing else. A platform that offers an image **without** an IDE — tmux and dtach
+are plumbing (persistent terminals), code-server is a tool for a human — passes
+`installCodeServer: false` here and adds `spunto-ide` when the IDE is wanted:
+
+```jsonc
+"features": {
+    "ghcr.io/coderhammer/features/spunto-pack:1": { "installCodeServer": false },
+    "ghcr.io/coderhammer/features/spunto-ide:1": {}
+}
+```
+
+Both features run **this** `install.sh`: `spunto-ide` ships a copy made at release time
+(`scripts/sync-shared.sh`), and the script tells the two apart by the `id` of the
+`devcontainer-feature.json` next to it. The pack's defaults are unchanged — `"spunto-pack": {}`
+still installs everything, code-server included.
+
 ## What it does not do
 
 The pack installs software and owns no policy. It does not create users, does not write to
@@ -163,6 +182,7 @@ Each case is a base image chosen for what it breaks:
 | `terminal_backend_tmux_only` | `debian:bookworm-slim` | Every option can say no on its own. |
 | `with_common_utils` | `debian:bookworm-slim` | The real chain, everything exercised as the non-root user: tmux round-trip, dtach detach/reattach, `script(1)` capture, sshd installed without `PermitRootLogin yes`. |
 | `brand_none` | `debian:bookworm-slim` | `brand: none` leaves code-server exactly as shipped: its own name, no Spunto theme. |
+| `no_code_server` | `debian:bookworm-slim` | `installCodeServer: false` — the terminal plumbing and no code-server at all, what a platform installing the IDE apart asks for. |
 | `duplicate.sh` | devcontainers base | The feature applied twice with different options — a re-run is a no-op, not a second install. |
 
 ## Supported platforms

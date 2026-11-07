@@ -16,17 +16,42 @@
 # Every component is best-effort by default: a missing tmux must not cost you code-server.
 # Set the `strict` option to turn that around and fail the build on the first casualty.
 
+#
+# One script, two features. spunto-ide (src/spunto-ide) is code-server and its brand alone, for a
+# platform that installs the IDE apart from the terminal plumbing: it ships *this* file, copied in
+# at release time by scripts/sync-shared.sh, and tells the two apart by the `id` of the
+# devcontainer-feature.json next to it. Its defaults are its own (code-server only), because a
+# fetcher that exports only the options it was given must still get an IDE and nothing else.
+
 set -e
 
-INSTALL_CODE_SERVER="${INSTALLCODESERVER:-true}"
+FEATURE_DIR="$(dirname "$0")"
+
+# `"key": "value"` out of our own devcontainer-feature.json — no jq on a bare base image.
+feature_field() {
+    sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" \
+        "$FEATURE_DIR/devcontainer-feature.json" 2>/dev/null | head -1
+}
+FEATURE_ID="$(feature_field id)"
+FEATURE_NAME="$(feature_field name)"
+[ -z "$FEATURE_ID" ] && FEATURE_ID="spunto-pack"
+[ -z "$FEATURE_NAME" ] && FEATURE_NAME="Spunto Pack"
+
+if [ "$FEATURE_ID" = "spunto-ide" ]; then
+    # The IDE is the whole point of this feature: not an option.
+    INSTALL_CODE_SERVER=true
+    TERMINAL_BACKEND="${TERMINALBACKEND:-none}"
+    CONFIGURE_TMUX="${CONFIGURETMUX:-false}"
+    INSTALL_SSHD="${INSTALLSSHD:-false}"
+else
+    INSTALL_CODE_SERVER="${INSTALLCODESERVER:-true}"
+    TERMINAL_BACKEND="${TERMINALBACKEND:-both}"
+    CONFIGURE_TMUX="${CONFIGURETMUX:-true}"
+    INSTALL_SSHD="${INSTALLSSHD:-false}"
+fi
 CODE_SERVER_VERSION="${CODESERVERVERSION:-latest}"
-TERMINAL_BACKEND="${TERMINALBACKEND:-both}"
-CONFIGURE_TMUX="${CONFIGURETMUX:-true}"
-INSTALL_SSHD="${INSTALLSSHD:-false}"
 BRAND="${BRAND:-spunto}"
 STRICT="${STRICT:-false}"
-
-FEATURE_DIR="$(dirname "$0")"
 
 # ─── Presentation ────────────────────────────────────────────────────────────
 #
@@ -180,12 +205,11 @@ ensure_cmd() {
 # ─── Header ──────────────────────────────────────────────────────────────────
 
 if [ "$(id -u)" -ne 0 ]; then
-    printf '%sSpunto Pack must run as root.%s\n' "$C_ERR" "$C_OFF" >&2
+    printf '%s%s must run as root.%s\n' "$C_ERR" "$FEATURE_NAME" "$C_OFF" >&2
     exit 1
 fi
 
-FEATURE_VERSION="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
-    "$FEATURE_DIR/devcontainer-feature.json" 2>/dev/null | head -1)"
+FEATURE_VERSION="$(feature_field version)"
 [ -z "$FEATURE_VERSION" ] && FEATURE_VERSION="dev"
 
 detect_pkg
@@ -235,7 +259,7 @@ STARTED="$(now)"
 SUMMARY=""
 add_summary() { if [ -z "$SUMMARY" ]; then SUMMARY="$1"; else SUMMARY="${SUMMARY} · $1"; fi; }
 
-rule "Spunto Pack ${FEATURE_VERSION}"
+rule "${FEATURE_NAME} ${FEATURE_VERSION}"
 kv "host" "${OS_LABEL} · $(uname -m) · ${PKG:-no package manager}"
 kv "user" "$USER_LABEL"
 kv "plan" "$PLAN"
@@ -536,10 +560,10 @@ fi
 [ -z "$SUMMARY" ] && SUMMARY="${C_DIM}nothing installed${C_OFF}"
 
 if [ "$WARNINGS" -eq 0 ]; then
-    rule "Spunto Pack ready in $(took "$STARTED")" "$C_OK"
+    rule "${FEATURE_NAME} ready in $(took "$STARTED")" "$C_OK"
 elif [ "$WARNINGS" -eq 1 ]; then
-    rule "Spunto Pack ready in $(took "$STARTED") — 1 warning" "$C_WARN"
+    rule "${FEATURE_NAME} ready in $(took "$STARTED") — 1 warning" "$C_WARN"
 else
-    rule "Spunto Pack ready in $(took "$STARTED") — ${WARNINGS} warnings" "$C_WARN"
+    rule "${FEATURE_NAME} ready in $(took "$STARTED") — ${WARNINGS} warnings" "$C_WARN"
 fi
 printf '  %s\n\n' "$SUMMARY"

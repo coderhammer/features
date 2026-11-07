@@ -15,6 +15,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # spunto-ide ships spunto-pack's install.sh and brand assets (scripts/sync-shared.sh).
+      - name: "Sync shared files"
+        run: ./scripts/sync-shared.sh
+
       - name: "Publish"
         uses: devcontainers/action@v1
         with:

@@ -1,0 +1,18 @@
+{
+    "ide_bookworm": {
+        "image": "debian:bookworm-slim",
+        "features": {
+            "spunto-ide": {
+                "strict": true
+            }
+        }
+    },
+    "brand_none": {
+        "image": "debian:bookworm-slim",
+        "features": {
+            "spunto-ide": {
+                "brand": "none"
+            }
+        }
+    }
+}

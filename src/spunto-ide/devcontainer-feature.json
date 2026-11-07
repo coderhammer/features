@@ -1,0 +1,30 @@
+{
+  "id": "spunto-ide",
+  "version": "1.0.0",
+  "name": "Spunto IDE",
+  "documentationURL": "https://github.com/coderhammer/features/tree/main/src/spunto-ide",
+  "description": "An in-browser VS Code (code-server) wearing the Spunto brand, and nothing else — for a platform that installs the IDE apart from the terminal plumbing of spunto-pack (installCodeServer: false). Same install script as spunto-pack.",
+  "options": {
+    "codeServerVersion": {
+      "type": "string",
+      "proposals": ["latest"],
+      "default": "latest",
+      "description": "code-server version to install, e.g. 4.101.2. 'latest' resolves at build time."
+    },
+    "brand": {
+      "type": "string",
+      "enum": ["spunto", "none"],
+      "default": "spunto",
+      "description": "Rebrand code-server as Spunto: the name in product.json, the favicon and PWA icons, and two built-in themes (Spunto Light, Spunto Dark). 'none' keeps code-server as shipped."
+    },
+    "strict": {
+      "type": "boolean",
+      "default": false,
+      "description": "Fail the build when code-server cannot be installed. Off by default: the build ends with a warning instead."
+    }
+  },
+  "installsAfter": [
+    "ghcr.io/devcontainers/features/common-utils",
+    "ghcr.io/coderhammer/features/spunto-pack"
+  ]
+}
