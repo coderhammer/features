@@ -280,11 +280,38 @@ if [ "$INSTALL_CODE_SERVER" = "true" ]; then
             # that is deleted right after.
             # (the variable goes on the *right* side of the pipe: that is the shell that runs
             # the installer — the left side only downloads it.)
-            _cs_cache="$(mktemp -d)"
-            # shellcheck disable=SC2086
-            curl -fsSL https://code-server.dev/install.sh \
-                | XDG_CACHE_HOME="$_cs_cache" sh -s -- $_args >/dev/null 2>&1
-            rm -rf "$_cs_cache"
+            #
+            # Retried: the release tarball (~240 MB) comes from GitHub's release CDN, which answers
+            # 503 or drops the connection mid-transfer now and then (2026-11-08: four requests in
+            # five for an hour, while githubstatus.com said all was well). One failure is not a
+            # verdict — but in strict mode it would fail every build of every project at once.
+            # Its output is kept, and its tail shown when every attempt failed: "could not be
+            # installed" alone says nothing of why.
+            _cs_attempts="${CODE_SERVER_ATTEMPTS:-5}"
+            _cs_delay="${CODE_SERVER_RETRY_DELAY:-5}"
+            _cs_log="$(mktemp)"
+            _cs_try=1
+            while :; do
+                _cs_cache="$(mktemp -d)"
+                # shellcheck disable=SC2086
+                curl -fsSL https://code-server.dev/install.sh \
+                    | XDG_CACHE_HOME="$_cs_cache" sh -s -- $_args >"$_cs_log" 2>&1
+                rm -rf "$_cs_cache"
+                [ -n "$(code_server_version)" ] && break
+                [ "$_cs_try" -ge "$_cs_attempts" ] && break
+                # curl's progress bar redraws one line with carriage returns: split them first.
+                _cs_why="$(tr '\r' '\n' <"$_cs_log" | grep -oE 'curl: \([0-9]+\)[^#]*|[Ee]rror[^#]*' | tail -1 | cut -c1-120)"
+                note "attempt ${_cs_try}/${_cs_attempts} failed${_cs_why:+ — $_cs_why} · retrying in ${_cs_delay}s"
+                sleep "$_cs_delay"
+                _cs_try=$((_cs_try + 1))
+                _cs_delay=$((_cs_delay * 2))
+            done
+            if [ -z "$(code_server_version)" ] && [ -s "$_cs_log" ]; then
+                note "the installer's last words (attempt ${_cs_try}/${_cs_attempts}):"
+                # The progress bar is one long line of '#': not words.
+                tr '\r' '\n' <"$_cs_log" | sed 's/#[#=O -]*//g' | grep -v '^[[:space:]]*$' | tail -12 | cut -c1-200 | sed 's/^/      /'
+            fi
+            rm -f "$_cs_log"
             set -e
             # Presence on disk is not the same as being runnable. The standalone release
             # bundles a glibc-linked node, so on a musl system (Alpine) every file lands
