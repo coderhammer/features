@@ -1149,6 +1149,26 @@ EOF
 chmod +x /usr/local/share/docker-init.sh
 chown ${USERNAME}:root /usr/local/share/docker-init.sh
 
+# The feature's own lifecycle hooks (postCreateCommand, postStartCommand): the entrypoint starts
+# dockerd in the background, so whatever runs next — the project's postCreate, its postStart —
+# could reach for `docker` before the daemon answers. Waiting here keeps that knowledge in the
+# feature rather than in every tool that runs it. Never fails the lifecycle: a daemon that does not
+# come (no privilege at a container runtime) is said, and the next command finds out by itself.
+tee /usr/local/share/docker-wait.sh > /dev/null \
+<< 'EOF'
+#!/bin/sh
+timeout="${DOCKER_WAIT_TIMEOUT:-30}"
+i=0
+while [ "$i" -lt "$timeout" ]; do
+    docker info > /dev/null 2>&1 && { echo "docker-in-docker: daemon ready"; exit 0; }
+    i=$((i + 1))
+    sleep 1
+done
+echo "docker-in-docker: daemon not ready after ${timeout}s (see /tmp/dockerd.log), continuing" >&2
+exit 0
+EOF
+chmod +x /usr/local/share/docker-wait.sh
+
 # Clean up
 rm -rf /var/lib/apt/lists/*
 

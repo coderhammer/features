@@ -14,5 +14,9 @@ check "log-exists" bash -c "ls /tmp/dockerd.log"
 check "log-for-completion" bash -c "cat /tmp/dockerd.log | grep 'Daemon has completed initialization'"
 check "log-contents" bash -c "cat /tmp/dockerd.log | grep 'API listen on /var/run/docker.sock'"
 
+# The feature's lifecycle hooks wait for the daemon (postCreateCommand, postStartCommand)
+check "docker-wait-exists" bash -c "test -x /usr/local/share/docker-wait.sh"
+check "docker-wait-ready" bash -c "/usr/local/share/docker-wait.sh | grep 'daemon ready'"
+
 # Report result
 reportResults
